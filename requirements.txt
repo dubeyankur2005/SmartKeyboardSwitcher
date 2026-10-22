@@ -1,0 +1,2 @@
+# No third-party runtime dependencies. Python 3.11+ on Windows is recommended.
+pytest>=8.0

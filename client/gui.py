@@ -13,6 +13,7 @@ class ClientApp(tk.Tk):
     def __init__(self):
         super().__init__(); self.title("Smart Keyboard Switcher — Client"); self.geometry("480x370"); self.minsize(440,340)
         self.events=queue.Queue(); self.injector=KeyboardInjector(); self.server=None
+        self.received_count=0; self.injected_count=0
         self._build(); self.after(100,self._poll); self.protocol("WM_DELETE_WINDOW",self.close)
 
     def _build(self):
@@ -40,21 +41,44 @@ class ClientApp(tk.Tk):
 
     def _inject(self,action,key):
         try: self.injector.event(action,key)
-        except Exception as exc: logging.exception("Keyboard injection failed"); self.events.put(("status","Error",str(exc)))
+        except Exception as exc:
+            logging.exception("Keyboard injection failed")
+            self.events.put(("status","Error",f"Remote keyboard input stopped: {exc}"))
+            raise
 
     def stop(self):
         if self.server: self.server.stop(); self.server=None
-        self.injector.release_all(); self.active.config(text="Remote keyboard control inactive",foreground="#526174")
+        self._release_remote_keys()
+        self.active.config(text="Remote keyboard control inactive",foreground="#526174")
         self.status.config(text="Stopped")
+
+    def _release_remote_keys(self):
+        try: self.injector.release_all()
+        except OSError as exc:
+            logging.exception("Could not release remotely held keys")
+            self.events.put(("status", "Error", str(exc)))
 
     def _poll(self):
         while True:
             try: item=self.events.get_nowait()
             except queue.Empty: break
-            if item[0]=="status": self.status.config(text=f"{item[1]} — {item[2]}")
+            if item[0]=="status":
+                self.status.config(text=f"{item[1]} — {item[2]}")
+                if item[1] == "Key event received": self.received_count += 1
+                elif item[1] == "Injection successful": self.injected_count += 1
+                self._paint_event_counts()
             elif item[0]=="active":
-                self.active.config(text="REMOTE CONTROL ACTIVE — input is injected into this laptop" if item[1] else "Remote keyboard control inactive",foreground="#a32626" if item[1] else "#526174")
-                if not item[1]: self.injector.release_all()
+                self.active.config(foreground="#a32626" if item[1] else "#526174")
+                if not item[1]: self._release_remote_keys()
         self.after(100,self._poll)
+
+    def _paint_event_counts(self):
+        if self.received_count:
+            text=f"Key events received: {self.received_count} | Injection successful: {self.injected_count}"
+            color="#a32626"
+        else:
+            text="Waiting for authenticated key events"
+            color="#526174"
+        self.active.config(text=text,foreground=color)
 
     def close(self): self.stop(); self.destroy()

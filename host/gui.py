@@ -67,7 +67,11 @@ class HostApp(tk.Tk):
 
     def _send_key(self, action,key):
         try: self.network.send({"type":"key","action":action,"key":key})
-        except Exception as exc: self.events.put(("failure",str(exc)))
+        except Exception as exc:
+            # Stop suppressing local input immediately if forwarding fails.
+            self.network.disconnect()
+            self.controller.set_mode("LOCAL")
+            self.events.put(("failure",str(exc)))
 
     def _set_mode(self, mode):
         if mode == "REMOTE" and self.network.sock is None:
@@ -78,15 +82,22 @@ class HostApp(tk.Tk):
         # Apply the safety transition on the hook thread so F12 stops forwarding
         # immediately; only widget updates are deferred to Tk's main thread.
         mode = {"F1": "LOCAL", "F2": "REMOTE", "F12": "LOCAL"}[key]
-        if mode == "REMOTE" and self.network.sock is None:
+        blocked = mode == "REMOTE" and self.network.sock is None
+        if blocked:
             mode = "LOCAL"
-            self.events.put(("status", "Connect to Laptop B before selecting Remote"))
         self.controller.set_mode(mode)
+        if blocked:
+            status = "Remote mode not selected; connect and authenticate the Client first"
+        elif mode == "REMOTE":
+            status = "Remote mode selected; Client connected; waiting for injection confirmation"
+        else:
+            status = "Local mode selected; forwarding stopped"
+        self.events.put(("status", status))
         self.events.put(("mode", mode))
 
     def _paint_mode(self):
         self.mode_label.config(text=f"{self.mode} — {'Laptop A' if self.mode=='LOCAL' else 'Laptop B'}")
-        self.warning.config(text="WARNING: keyboard input is being forwarded to Laptop B." if self.mode=="REMOTE" else "")
+        self.warning.config(text="REMOTE MODE SELECTED: local physical input is suppressed. Check the status below for Client injection confirmation." if self.mode=="REMOTE" else "")
 
     def _poll(self):
         while True:
@@ -94,7 +105,7 @@ class HostApp(tk.Tk):
             except queue.Empty: break
             if item[0]=="network":
                 self.status.config(text=f"{item[1]} — {item[2]}")
-                if item[1] in ("Disconnected","Error"): self._set_mode("LOCAL")
+                if item[1] in ("Disconnected","Error","Injection error"): self._set_mode("LOCAL")
             elif item[0]=="mode": self.mode=item[1]; self._paint_mode()
             elif item[0]=="status": self.status.config(text=item[1])
             elif item[0]=="failure":

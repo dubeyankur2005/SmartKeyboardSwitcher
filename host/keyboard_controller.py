@@ -66,7 +66,7 @@ class KeyboardController:
         LRESULT = ctypes.c_ssize_t
         HOOKPROC = ctypes.WINFUNCTYPE(LRESULT, ctypes.c_int, wintypes.WPARAM, wintypes.LPARAM)
         class KBDLLHOOKSTRUCT(ctypes.Structure):
-            _fields_ = [("vkCode", wintypes.DWORD), ("scanCode", wintypes.DWORD), ("flags", wintypes.DWORD), ("time", wintypes.DWORD), ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong))]
+            _fields_ = [("vkCode", wintypes.DWORD), ("scanCode", wintypes.DWORD), ("flags", wintypes.DWORD), ("time", wintypes.DWORD), ("dwExtraInfo", ctypes.c_size_t)]
         user32.SetWindowsHookExW.restype = wintypes.HANDLE
         user32.SetWindowsHookExW.argtypes = (ctypes.c_int, HOOKPROC, wintypes.HINSTANCE, wintypes.DWORD)
         user32.CallNextHookEx.restype = LRESULT
@@ -77,6 +77,11 @@ class KeyboardController:
                 vk = int(info.vkCode)
                 key = _vk_to_key(vk, int(info.scanCode))
                 down = wparam in (WM_KEYDOWN, WM_SYSKEYDOWN)
+                # SendInput events from the Client also traverse this hook
+                # during same-machine testing. Let them reach the focused app
+                # without forwarding them back across the TCP connection.
+                if _is_injected(int(info.flags)):
+                    return user32.CallNextHookEx(self.hook, ncode, wparam, lparam)
                 if vk in (0x70, 0x71, 0x7B):
                     if down:
                         self.control_callback({0x70: "F1", 0x71: "F2", 0x7B: "F12"}[vk])
@@ -122,3 +127,7 @@ def _vk_to_key(vk, scan):
     if 0x70 <= vk <= 0x87:
         return f"F{vk-0x6F}"
     return names.get(vk)
+
+
+def _is_injected(flags):
+    return bool(flags & 0x10)  # LLKHF_INJECTED

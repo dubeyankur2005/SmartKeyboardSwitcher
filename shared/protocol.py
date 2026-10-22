@@ -41,7 +41,10 @@ def decode_line(raw):
     elif kind == "key":
         if set(message) != {"type", "action", "key"} or message["action"] not in ("down", "up") or message["key"] not in ALLOWED_KEYS:
             raise ValueError("invalid key event")
-    elif kind not in ("auth_ok", "stop", "ping", "pong") or set(message) != {"type"}:
+    elif kind == "injection_error":
+        if set(message) != {"type", "detail"} or not isinstance(message["detail"], str) or len(message["detail"]) > 512:
+            raise ValueError("invalid injection error")
+    elif kind not in ("auth_ok", "injection_ok", "stop", "ping", "pong") or set(message) != {"type"}:
         raise ValueError("unsupported message")
     return message
 

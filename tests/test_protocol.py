@@ -8,6 +8,12 @@ def test_round_trip_and_fragmented_or_coalesced_frames():
     assert buf.feed(first[5:]+second)==[{"type":"key","action":"down","key":"A"},{"type":"key","action":"up","key":"A"}]
 
 
+def test_injection_acknowledgment_is_a_valid_protocol_message():
+    assert decode_line(encode({"type":"injection_ok"}).strip()) == {"type":"injection_ok"}
+    message = {"type":"injection_error", "detail":"SendInput failed"}
+    assert decode_line(encode(message).strip()) == message
+
+
 @pytest.mark.parametrize("raw",[b"{bad}\n",b'{"type":"key","action":"sideways","key":"A"}\n',b'{"type":"key","action":"down","key":"NOPE"}\n',b'{"type":"inject","key":"A"}\n'])
 def test_reject_malformed_messages(raw):
     with pytest.raises(ValueError): decode_line(raw.strip())

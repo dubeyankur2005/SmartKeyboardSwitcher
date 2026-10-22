@@ -72,7 +72,20 @@ class NetworkServer:
             if not data: break
             for msg in buf.feed(data):
                 if msg["type"] == "key":
-                    self.on_active(True); self.on_key(msg["action"], msg["key"])
+                    self.on_status("Key event received", "Authenticated key event received")
+                    try:
+                        self.on_key(msg["action"], msg["key"])
+                    except Exception as exc:
+                        try:
+                            conn.sendall(encode({"type":"injection_error", "detail":str(exc)[:512]}))
+                        except OSError:
+                            pass
+                        raise
+                    # This message has no key value and is sent only after the
+                    # injection callback returns successfully.
+                    conn.sendall(encode({"type":"injection_ok"}))
+                    self.on_status("Injection successful", "SendInput accepted a key event")
+                    self.on_active(True)
                 elif msg["type"] == "ping":
                     conn.sendall(encode({"type":"pong"}))
         try: conn.sendall(encode({"type":"stop"}))

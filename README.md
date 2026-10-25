@@ -6,7 +6,7 @@ A small Windows desktop prototype for forwarding keyboard events from a host lap
 
 ```text
 Laptop A keyboard -> low-level hook -> LOCAL: Windows app
-                                  -> REMOTE: NDJSON/TCP + pairing token -> Laptop B SendInput
+ NDJSON/TCP + pairing token -> Laptop B SendInput
 ```
 
 The client accepts one authenticated TCP session. Each message is a bounded JSON object terminated by a newline. Only allowlisted virtual keys and down/up events are accepted. The programs do not record or log key values or typed text.

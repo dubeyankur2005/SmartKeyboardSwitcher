@@ -1,78 +1,407 @@
+::: {align="center"}
 # Smart Keyboard Switcher
 
-A small Windows desktop prototype for forwarding keyboard events from a host laptop (A) to one authenticated client laptop (B) on a trusted local network. The host uses a Windows low-level keyboard hook to suppress ordinary local input while Remote is selected. F1 selects Local, F2 selects Remote, and F12 returns to Local as an emergency stop.
+### Control two Windows laptops using one keyboard
 
-## Architecture
+A Python-based keyboard-sharing application that lets you switch
+keyboard input between a **Host laptop (Laptop A)** and a **Client
+laptop (Laptop B)** using keyboard shortcuts.
 
-```text
-Laptop A keyboard -> low-level hook -> LOCAL: Windows app
- NDJSON/TCP + pairing token -> Laptop B SendInput
+![Python](https://img.shields.io/badge/Python-3.x-3776AB?logo=python&logoColor=white)
+![Platform](https://img.shields.io/badge/Platform-Windows-0078D4?logo=windows&logoColor=white)
+![Status](https://img.shields.io/badge/Project-Version%201-orange)
+![License](https://img.shields.io/badge/License-Add%20your%20license-lightgrey)
+:::
+
+------------------------------------------------------------------------
+
+## Table of contents
+
+-   [Overview](#overview)
+-   [Features](#features)
+-   [How it works](#how-it-works)
+-   [Keyboard shortcuts](#keyboard-shortcuts)
+-   [Requirements](#requirements)
+-   [Installation](#installation)
+-   [Run on two laptops](#run-on-two-laptops)
+-   [Test the application](#test-the-application)
+-   [Troubleshooting](#troubleshooting)
+-   [Security notes](#security-notes)
+-   [Project structure](#project-structure)
+-   [Future improvements](#future-improvements)
+
+## Overview
+
+**Smart Keyboard Switcher** is a Windows desktop project built with
+Python. It is designed to forward keyboard input from one computer to
+another over a local network, allowing the user to choose which laptop
+receives keyboard input.
+
+-   **Laptop A --- Host:** The laptop with the physical keyboard and the
+    Host application.
+-   **Laptop B --- Client:** The second laptop running the Client
+    application that receives forwarded keyboard events.
+
+> **Important:** Both computers must be powered on, connected to a
+> network that allows device-to-device communication, and running the
+> appropriate application. A successful TCP connection alone does not
+> prove keyboard injection is working; complete the two-laptop test
+> described below.
+
+## Features
+
+-   Switch between local and remote input with keyboard shortcuts.
+-   Client/Host communication over TCP on a configurable port (the
+    examples below use `8765`).
+-   Pairing-token check, when enabled by the project's configuration.
+-   Emergency-stop shortcut intended to return to local mode and release
+    held remote keys.
+-   Separate Host and Client graphical interfaces built with Tkinter.
+-   Automated tests with `pytest`.
+
+Features and security behavior depend on the current code and
+configuration in your checked-out version.
+
+## How it works
+
+![Smart Keyboard Switcher architecture](assets/architecture.svg)
+
+1.  The Host runs on Laptop A.
+2.  The Client listens for a connection on Laptop B.
+3.  The Host connects to Laptop B using its reachable IPv4 address and
+    the configured port.
+4.  When remote mode is selected, the Host forwards keyboard events to
+    the Client.
+5.  The Client attempts to inject the received keyboard events on Laptop
+    B.
+
+## Keyboard shortcuts
+
+  -----------------------------------------------------------------------
+  Shortcut                            Intended behavior
+  ----------------------------------- -----------------------------------
+  `F1`                                **Local mode** --- use Laptop A
+                                      locally and stop remote forwarding.
+
+  `F2`                                **Remote mode** --- forward
+                                      keyboard input to Laptop B.
+
+  `F12`                               **Emergency stop** --- stop
+                                      forwarding, return to local mode,
+                                      and attempt to release held remote
+                                      keys.
+  -----------------------------------------------------------------------
+
+The GUI indicates the selected mode and connection/injection status. If
+the status reports an error or timeout, stop and troubleshoot the
+connection before using keyboard control.
+
+## Requirements
+
+-   Two Windows laptops for the real end-to-end test.
+-   Python installed on both laptops. Use a version supported by this
+    repository.
+-   Git, if cloning from GitHub.
+-   Both laptops connected to the same trusted Wi-Fi/LAN/hotspot, with
+    device-to-device communication permitted.
+-   The same project version on both laptops.
+-   TCP port `8765` available, unless you configure another port.
+-   Matching Host/Client settings, including the pairing token if
+    required.
+
+## Installation
+
+### 1. Install Python and Git
+
+Check that they are available in PowerShell:
+
+``` powershell
+python --version
+git --version
 ```
 
-The client accepts one authenticated TCP session. Each message is a bounded JSON object terminated by a newline. Only allowlisted virtual keys and down/up events are accepted. The programs do not record or log key values or typed text.
+If either command is not recognized, install the missing program first.
+On Windows, ensure Python includes **Tcl/Tk** support because the
+graphical interface uses Tkinter.
 
-## Prerequisites and install
+### 2. Clone the repository
 
-Use Windows 10/11 and Python 3.11 or newer. Python 3.14.4 is compatible with the standard-library implementation. The current code needs no third-party runtime package; pytest is used for tests.
+Replace the URL below with the actual URL of this GitHub repository:
 
-From this project folder, in PowerShell:
+``` powershell
+git clone https://github.com/YOUR_USERNAME/SmartKeyboardSwitcher.git
+cd SmartKeyboardSwitcher
+```
 
-```powershell
-py -3 -m venv .venv
+Do not copy the example URL unchanged. Use your real repository URL.
+
+### 3. Create and activate a virtual environment
+
+Run from the repository root on **each laptop**:
+
+``` powershell
+python -m venv .venv
 .\.venv\Scripts\Activate.ps1
+```
+
+If PowerShell blocks activation, you can run the environment's Python
+executable directly in the commands below instead of changing
+system-wide execution policy.
+
+### 4. Install dependencies
+
+``` powershell
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-## Pair and run
+If dependency installation fails, check the error and the repository's
+supported Python version before proceeding.
 
-1. Connect both laptops to the same trusted Wi-Fi or a private hotspot. Do not forward the listener port from a router or expose it to the internet.
-2. On Laptop B, launch the client:
+### 5. Run the automated tests
 
-   ```powershell
-   python -m client.main
-   ```
-
-3. Keep the generated pairing token private. Copy it into the host app over a trusted channel. A new token is generated each launch.
-4. On Laptop B click **Start server**. If Windows Firewall asks, allow Python only on the **Private** network profile. For a manual narrow rule, run elevated PowerShell and replace the executable path with the one shown by `python`:
-
-   ```powershell
-   New-NetFirewallRule -DisplayName "Smart Keyboard Switcher (Private LAN)" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8765 -Profile Private -Program "C:\Path\To\Python\python.exe"
-   ```
-
-   Remove it when no longer needed with `Remove-NetFirewallRule -DisplayName "Smart Keyboard Switcher (Private LAN)"`.
-5. Find Laptop B's IPv4 address by running `ipconfig` on B and reading the IPv4 Address under the active Wi-Fi adapter. Avoid VPN and public network addresses.
-6. On Laptop A launch the host:
-
-   ```powershell
-   python -m host.main
-   ```
-
-7. Enter B's IPv4 address, port `8765`, and the pairing token. Click **Connect**, then **Start keyboard control**. The hook starts in Local mode. Press F2 to switch to Remote and type in B's active application.
-
-## Controls and safe stop
-
-- **F1** selects Local. Input is passed to Laptop A.
-- **F2** selects Remote, only while connected. Laptop A suppresses regular key input and forwards events to B.
-- **F12** emergency stop: switch to Local and release held remote keys. It does not stop the hook; press F1 to remain local, F2 to resume, or **Stop keyboard control** to remove the hook. Disconnecting or closing also stops forwarding.
-- The client shows a red active indicator while receiving key events. Use **Stop server** to disconnect and release keys on B.
-
-## Test the connection
-
-On B start the server and note the Connected status on A. Start host keyboard control, select F2, then type in a harmless text editor on B. Check that the characters appear on B and do not appear in the focused app on A. Press F1 and confirm local typing resumes. Test Shift/Ctrl/Alt combinations carefully, and press F12 during a held modifier to confirm release. Then test disconnecting B while remote mode is active: A should return to Local and B should release held keys.
-
-## Tests
-
-```powershell
+``` powershell
 python -m pytest -q
 ```
 
-The automated tests cover message framing and validation, authentication comparison, and local mode transition cleanup. They do not emulate Windows hook suppression or SendInput behavior.
+Resolve any failing tests before testing live keyboard input. Automated
+tests do not replace the real two-laptop test.
 
-## Limitations and safety
+## Run on two laptops
 
-- This workspace is Windows 10 with Python 3.14.4, but the two-laptop end-to-end test has not been run. Do not treat real remote typing as verified until manually tested on both laptops.
-- Windows low-level hooks and `SendInput` are subject to desktop/session permissions. This does not bypass the secure desktop, UAC prompts, lock screen, or applications that reject synthetic input. Run both apps at the same integrity level as the target application.
-- The listener binds to all local interfaces; restrict the Windows Firewall rule to the Private profile and trusted subnet, keep the random pairing token secret, and stop the server after use. The token authenticates but traffic is not encrypted. Use only a trusted network.
-- Keyboard layouts vary. Keys are represented as virtual-key names, not text, so a different layout may produce different characters. Some international or unusual keys are unsupported.
-- F1, F2 and F12 are reserved globally while the hook runs. If the host loses connection, the host returns to Local. The client releases held keys at session end. Do not run multiple host instances.
-- Logs contain operational diagnostics only; key values and typed characters are never logged.
+### Step 1 --- Connect both laptops to a trusted network
+
+Connect Laptop A and Laptop B to the same trusted Wi-Fi network or
+hotspot. Some guest Wi-Fi and hotspot configurations isolate connected
+devices and prevent them from communicating.
+
+### Step 2 --- Find Laptop B's IPv4 address
+
+On **Laptop B**, open PowerShell and run:
+
+``` powershell
+ipconfig
+```
+
+Find the IPv4 address under the active Wi-Fi adapter. For example,
+`192.168.1.105` is only an example; use the address shown on your
+laptop.
+
+Do **not** use `127.0.0.1` in Laptop A's Host configuration. That
+address refers to Laptop A itself.
+
+### Step 3 --- Start the Client on Laptop B
+
+Open PowerShell in the cloned project directory:
+
+``` powershell
+cd path\to\SmartKeyboardSwitcher
+.\.venv\Scripts\python.exe -m client.main
+```
+
+Keep the Client application running. If it reports a startup error,
+resolve that error before continuing.
+
+### Step 4 --- Start the Host on Laptop A
+
+On Laptop A, open another PowerShell terminal in the cloned project
+directory:
+
+``` powershell
+cd path\to\SmartKeyboardSwitcher
+.\.venv\Scripts\python.exe -m host.main
+```
+
+Keep the Host application running.
+
+### Step 5 --- Configure the Host
+
+In the Host window, enter:
+
+-   **Laptop B IPv4:** the actual IPv4 address found on Laptop B.
+-   **Port:** `8765`, if that is the port configured for the Client.
+-   **Pairing token:** the token expected by both applications, if token
+    authentication is enabled.
+
+Click **Connect** and wait for a successful connection status. Do not
+assume a connection succeeded just because the button was clicked.
+
+### Step 6 --- Check network reachability if it times out
+
+On Laptop B, check whether a process is listening on port `8765`:
+
+``` powershell
+netstat -ano | findstr :8765
+```
+
+On Laptop A, test the connection (replace the example address with
+Laptop B's actual IPv4 address):
+
+``` powershell
+Test-NetConnection -ComputerName 192.168.1.105 -Port 8765
+```
+
+-   `TcpTestSucceeded : True` means the TCP port is reachable.
+-   `TcpTestSucceeded : False` means you should check the IP address,
+    Client listener, network isolation, port configuration, and
+    firewall.
+
+If required, create a narrowly scoped inbound Windows Firewall rule for
+the configured TCP port on the **Private** profile only, and only on a
+trusted network. Do not disable the firewall or expose the service to
+public networks.
+
+### Step 7 --- Start keyboard control and test
+
+Use Notepad on both computers:
+
+1.  On Laptop A, open Notepad and press `F1`. Type a harmless test
+    message and confirm it appears on Laptop A.
+2.  On Laptop B, open Notepad.
+3.  On Laptop A, press `F2` and type a different harmless test message.
+4.  Confirm the text appears in Laptop B's Notepad.
+5.  Press `F1` on Laptop A and type again. Confirm local input works.
+6.  Test `F12` and confirm remote forwarding stops and the Host returns
+    to local mode.
+7.  If the Client GUI reports injection errors, stop testing and inspect
+    the error before continuing.
+
+**Note:** Keep the intended destination application's window focused on
+each laptop. Do not type passwords, private messages, or other sensitive
+information during testing.
+
+## Troubleshooting
+
+### Host shows `Error — timed out`
+
+1.  Confirm the Client app is running on Laptop B.
+2.  Re-run `ipconfig` on Laptop B and verify the Host's IP field.
+3.  Confirm both apps use the same port.
+4.  Run `netstat -ano | findstr :8765` on Laptop B.
+5.  Run `Test-NetConnection -ComputerName CLIENT_IP -Port 8765` on
+    Laptop A.
+6.  Check whether the Wi-Fi/hotspot isolates devices.
+7.  Check Windows Firewall for a narrowly scoped Private-network inbound
+    rule.
+
+Replace `CLIENT_IP` with Laptop B's actual address.
+
+### Host connects but keyboard events do not appear on Laptop B
+
+-   Confirm the GUI says remote mode is active.
+-   Check the Client's received-event and injection status.
+-   Ensure Notepad is focused on Laptop B.
+-   Confirm the Host and Client versions/configuration match.
+-   Stop keyboard control and return to local mode before further
+    troubleshooting.
+
+### `Can't find a usable init.tcl` / Tkinter error
+
+The Python installation may be missing Tcl/Tk files. Repair or modify
+the Python installation and ensure **Tcl/Tk and IDLE** is installed.
+Then verify:
+
+``` powershell
+python -m tkinter
+```
+
+A small Tkinter test window should open.
+
+### `python` or the virtual environment is not found
+
+Run commands from the repository root and check:
+
+``` powershell
+python --version
+Test-Path .\.venv\Scripts\python.exe
+```
+
+If the virtual environment does not exist, create it and install
+dependencies again as described above.
+
+### Tests fail
+
+Run:
+
+``` powershell
+python -m pytest -q
+```
+
+Read the first failing test and traceback. Do not treat a passing test
+suite as proof of successful real keyboard forwarding.
+
+## Security notes
+
+-   Use this project only on computers and networks you own or are
+    authorized to use.
+-   Use a trusted private network.
+-   A pairing token is not encryption. Do not assume keyboard traffic is
+    encrypted unless the implementation explicitly provides and verifies
+    transport encryption.
+-   Do not expose the listening port to the public internet.
+-   Avoid entering passwords or sensitive data while testing.
+-   Use the emergency stop and verify that held keys are released when a
+    session is interrupted.
+-   Stop the Host/Client applications when finished.
+
+## Project structure
+
+The following is the expected high-level structure; your repository may
+contain additional files:
+
+``` text
+SmartKeyboardSwitcher/
+├── client/
+│   ├── gui.py
+│   ├── keyboard_injector.py
+│   ├── main.py
+│   └── network_server.py
+├── host/
+│   ├── gui.py
+│   ├── keyboard_controller.py
+│   ├── main.py
+│   └── network_client.py
+├── shared/
+│   ├── protocol.py
+│   └── security.py
+├── tests/
+├── requirements.txt
+└── README.md
+```
+
+## Future improvements
+
+-   Camera-based face detection to assist laptop selection.
+-   Head-direction-based switching with manual hotkeys as a fallback.
+-   Improved reconnection and connection-status handling.
+-   Additional integration tests and clearer error reporting.
+
+## Screenshots
+
+Add screenshots from your **current working build** to a `docs/images/`
+directory and link them here. Suggested screenshots:
+
+-   `docs/images/host-window.png` --- Host GUI in local mode.
+-   `docs/images/client-window.png` --- Client GUI listening or
+    connected.
+-   `docs/images/remote-mode.png` --- successful remote mode and
+    injection status.
+-   `docs/images/two-laptop-demo.png` --- both laptops during a
+    successful test.
+
+Example Markdown:
+
+``` markdown
+![Host window](docs/images/host-window.png)
+```
+
+Do not use a timeout/error screenshot as the primary success screenshot.
+Capture the actual working state with any pairing token hidden.
+
+------------------------------------------------------------------------
+
+::: {align="center"}
+**Smart Keyboard Switcher --- Version 1**
+
+Built with Python • Tkinter • TCP sockets • pytest
+:::
